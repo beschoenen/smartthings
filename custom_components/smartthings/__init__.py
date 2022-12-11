@@ -432,6 +432,18 @@ class SmartThingsEntity(Entity):
     @property
     def device_info(self) -> DeviceInfo:
         """Get attributes about the device."""
+        if self._device.type == "OCF":
+            model = self._device.status.attributes[Attribute.mnmo].value
+            model = model.split("|")[0]
+            return DeviceInfo(
+                configuration_url="https://account.smartthings.com",
+                identifiers={(DOMAIN, self._device.device_id)},
+                manufacturer=self._device.status.attributes[Attribute.mnmn].value,
+                model=model,
+                name=self._device.label,
+                sw_version=self._device.status.attributes[Attribute.mnfv].value,
+            )
+
         return DeviceInfo(
             configuration_url="https://account.smartthings.com",
             identifiers={(DOMAIN, self._device.device_id)},

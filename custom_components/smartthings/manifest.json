@@ -3,11 +3,12 @@
   "name": "SmartThings",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/smartthings",
-  "requirements": ["pysmartapp==0.3.3", "pysmartthings==0.7.6"],
+  "requirements": ["pysmartapp==0.3.4", "pysmartthings==0.7.7"],
   "dependencies": ["webhook"],
   "after_dependencies": ["cloud"],
   "codeowners": ["@andrewsayre"],
   "iot_class": "cloud_push",
+  "version": "1.0",
   "dhcp": [
     {
       "hostname": "st*",

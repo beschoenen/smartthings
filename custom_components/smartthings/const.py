@@ -2,7 +2,14 @@
 from datetime import timedelta
 import re
 
-from homeassistant.const import Platform
+from homeassistant.const import (
+    Platform,
+    ELECTRIC_POTENTIAL_VOLT,
+    PERCENTAGE,
+    POWER_WATT,
+    TEMP_CELSIUS,
+    TEMP_FAHRENHEIT,
+)
 
 DOMAIN = "smartthings"
 
@@ -39,6 +46,8 @@ PLATFORMS = [
     Platform.LIGHT,
     Platform.LOCK,
     Platform.COVER,
+    Platform.SELECT,
+    Platform.BUTTON,
     Platform.SWITCH,
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
@@ -46,10 +55,19 @@ PLATFORMS = [
 ]
 
 IGNORED_CAPABILITIES = [
-    "execute",
     "healthCheck",
     "ocf",
 ]
+
+UNIT_MAP = {
+    "C": TEMP_CELSIUS,
+    "F": TEMP_FAHRENHEIT,
+    "Hour": "Hour",
+    "minute": "Minute",
+    "%": PERCENTAGE,
+    "W": POWER_WATT,
+    "V": ELECTRIC_POTENTIAL_VOLT,
+}
 
 TOKEN_REFRESH_INTERVAL = timedelta(days=14)
 

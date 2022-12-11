@@ -194,16 +194,7 @@ CAPABILITY_TO_SENSORS: dict[str, list[Map]] = {
             None,
         ),
     ],
-    Capability.energy_meter: [
-        Map(
-            Attribute.energy,
-            "Energy Meter",
-            ENERGY_KILO_WATT_HOUR,
-            SensorDeviceClass.ENERGY,
-            SensorStateClass.TOTAL_INCREASING,
-            None,
-        )
-    ],
+    Capability.energy_meter: [],
     Capability.equivalent_carbon_dioxide_measurement: [
         Map(
             Attribute.equivalent_carbon_dioxide_measurement,
@@ -316,16 +307,7 @@ CAPABILITY_TO_SENSORS: dict[str, list[Map]] = {
         Map(Attribute.oven_setpoint, "Oven Set Point", None, None, None, None)
     ],
     Capability.power_consumption_report: [],
-    Capability.power_meter: [
-        Map(
-            Attribute.power,
-            "Power Meter",
-            POWER_WATT,
-            SensorDeviceClass.POWER,
-            SensorStateClass.MEASUREMENT,
-            None,
-        )
-    ],
+    Capability.power_meter: [],
     Capability.power_source: [
         Map(
             Attribute.power_source,
@@ -534,6 +516,16 @@ CAPABILITY_TO_SENSORS: dict[str, list[Map]] = {
             None,
         ),
     ],
+    "samsungce.softwareUpdate": [
+        Map(
+            "newVersionAvailable",
+            "Firmware Update Available",
+            None,
+            None,
+            None,
+            EntityCategory.DIAGNOSTIC,
+        ),
+    ],
 }
 
 UNITS = {"C": TEMP_CELSIUS, "F": TEMP_FAHRENHEIT}
@@ -566,10 +558,15 @@ async def async_setup_entry(
                     ]
                 )
             elif capability == Capability.power_consumption_report:
+                reports = POWER_CONSUMPTION_REPORT_NAMES
+                if device.status.attributes["energySavingSupport"].value is False:
+                    if "energySaved" in reports:
+                        reports.remove("energySaved")
+
                 entities.extend(
                     [
                         SmartThingsPowerConsumptionSensor(device, report_name)
-                        for report_name in POWER_CONSUMPTION_REPORT_NAMES
+                        for report_name in reports
                     ]
                 )
             else:
@@ -650,6 +647,13 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
         return f"{self._device.device_id}.{self._attribute}"
 
     @property
+    def available(self) -> bool:
+        """check if sensor value is available"""
+        if self._device.status.attributes[self._attribute].value is None:
+            return False
+        return True
+
+    @property
     def native_value(self):
         """Return the state of the sensor."""
         value = self._device.status.attributes[self._attribute].value
@@ -711,8 +715,10 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         super().__init__(device)
         self.report_name = report_name
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        if self.report_name != "power":
+        if self.report_name in ("energy", "energySaved"):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        else:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def name(self) -> str:
@@ -723,6 +729,14 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
     def unique_id(self) -> str:
         """Return a unique ID."""
         return f"{self._device.device_id}.{self.report_name}_meter"
+
+    @property
+    def available(self) -> bool:
+        """check if sensor value is available"""
+        value = self._device.status.attributes[Attribute.power_consumption].value
+        if value is None or value.get(self.report_name) is None:
+            return False
+        return True
 
     @property
     def native_value(self):
@@ -739,7 +753,9 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         """Return the device class of the sensor."""
         if self.report_name == "power":
             return SensorDeviceClass.POWER
-        return SensorDeviceClass.ENERGY
+        if self.report_name in ("energy", "energySaved"):
+            return SensorDeviceClass.ENERGY
+        return None
 
     @property
     def native_unit_of_measurement(self):
@@ -747,6 +763,12 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         if self.report_name == "power":
             return POWER_WATT
         return ENERGY_KILO_WATT_HOUR
+
+    @property
+    def icon(self) -> str | None:
+        if self.report_name in ("deltaEnergy", "powerEnergy"):
+            return "mdi:current-ac"
+        return None
 
     @property
     def extra_state_attributes(self):
