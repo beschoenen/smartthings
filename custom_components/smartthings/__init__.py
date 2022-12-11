@@ -21,7 +21,7 @@ from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
     async_dispatcher_send,
 )
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
@@ -183,7 +183,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
         return False
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
@@ -405,6 +405,8 @@ class DeviceBroker:
 class SmartThingsEntity(Entity):
     """Defines a SmartThings entity."""
 
+    _attr_should_poll = False
+
     def __init__(self, device: DeviceEntity) -> None:
         """Initialize the instance."""
         self._device = device
@@ -428,34 +430,20 @@ class SmartThingsEntity(Entity):
             self._dispatcher_remove()
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Get attributes about the device."""
-        if self._device.type == "OCF":
-            model = self._device.status.attributes[Attribute.mnmo].value
-            model = model.split("|")[0]
-            return {
-                "identifiers": {(DOMAIN, self._device.device_id)},
-                "name": self._device.label,
-                "model": model,
-                "manufacturer": self._device.status.attributes[Attribute.mnmn].value,
-                "sw_version": self._device.status.attributes[Attribute.mnfv].value,
-            }
-        return {
-            "identifiers": {(DOMAIN, self._device.device_id)},
-            "name": self._device.label,
-            "model": self._device.device_type_name,
-            "manufacturer": "Unavailable",
-        }
+        return DeviceInfo(
+            configuration_url="https://account.smartthings.com",
+            identifiers={(DOMAIN, self._device.device_id)},
+            manufacturer="Unavailable",
+            model=self._device.device_type_name,
+            name=self._device.label,
+        )
 
     @property
     def name(self) -> str:
         """Return the name of the device."""
         return self._device.label
-
-    @property
-    def should_poll(self) -> bool:
-        """No polling needed for this device."""
-        return False
 
     @property
     def unique_id(self) -> str:

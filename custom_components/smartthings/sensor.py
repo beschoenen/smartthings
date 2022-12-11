@@ -4,10 +4,6 @@ from __future__ import annotations
 from collections import namedtuple
 from collections.abc import Sequence
 
-import json
-
-import asyncio
-
 from pysmartthings import Attribute, Capability
 from pysmartthings.device import DeviceEntity
 
@@ -16,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     AREA_SQUARE_METERS,
     CONCENTRATION_PARTS_PER_MILLION,
@@ -26,20 +22,23 @@ from homeassistant.const import (
     MASS_KILOGRAMS,
     PERCENTAGE,
     POWER_WATT,
+    TEMP_CELSIUS,
+    TEMP_FAHRENHEIT,
     VOLUME_CUBIC_METERS,
 )
-
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import SmartThingsEntity
-from .const import DATA_BROKERS, DOMAIN, UNIT_MAP
+from .const import DATA_BROKERS, DOMAIN
 
 Map = namedtuple(
-    "map", "attribute name default_unit device_class state_class entity_category"
+    "Map", "attribute name default_unit device_class state_class entity_category"
 )
 
-CAPABILITY_TO_SENSORS = {
+CAPABILITY_TO_SENSORS: dict[str, list[Map]] = {
     Capability.activity_lighting_mode: [
         Map(
             Attribute.lighting_mode,
@@ -99,7 +98,7 @@ CAPABILITY_TO_SENSORS = {
             Attribute.body_weight_measurement,
             "Body Weight",
             MASS_KILOGRAMS,
-            None,
+            SensorDeviceClass.WEIGHT,
             SensorStateClass.MEASUREMENT,
             None,
         )
@@ -210,7 +209,7 @@ CAPABILITY_TO_SENSORS = {
             Attribute.equivalent_carbon_dioxide_measurement,
             "Equivalent Carbon Dioxide Measurement",
             CONCENTRATION_PARTS_PER_MILLION,
-            None,
+            SensorDeviceClass.CO2,
             SensorStateClass.MEASUREMENT,
             None,
         )
@@ -230,7 +229,7 @@ CAPABILITY_TO_SENSORS = {
             Attribute.gas_meter,
             "Gas Meter",
             ENERGY_KILO_WATT_HOUR,
-            None,
+            SensorDeviceClass.ENERGY,
             SensorStateClass.MEASUREMENT,
             None,
         ),
@@ -249,7 +248,7 @@ CAPABILITY_TO_SENSORS = {
             Attribute.gas_meter_volume,
             "Gas Meter Volume",
             VOLUME_CUBIC_METERS,
-            None,
+            SensorDeviceClass.VOLUME,
             SensorStateClass.MEASUREMENT,
             None,
         ),
@@ -301,36 +300,20 @@ CAPABILITY_TO_SENSORS = {
     Capability.oven_mode: [
         Map(
             Attribute.oven_mode,
-            "Mode",
+            "Oven Mode",
             None,
             None,
             None,
-            None,
+            EntityCategory.CONFIG,
         )
     ],
     Capability.oven_operating_state: [
-        Map(Attribute.operation_time, "Operation Time", None, None, None, None),
-        Map(Attribute.machine_state, "Machine State", None, None, None, None),
-        Map(Attribute.oven_job_state, "Job State", None, None, None, None),
-        Map(
-            Attribute.completion_time,
-            "Completion Time",
-            None,
-            SensorDeviceClass.TIMESTAMP,
-            None,
-            None,
-        ),
-        Map(Attribute.progress, "Progress", PERCENTAGE, None, None, None),
+        Map(Attribute.machine_state, "Oven Machine State", None, None, None, None),
+        Map(Attribute.oven_job_state, "Oven Job State", None, None, None, None),
+        Map(Attribute.completion_time, "Oven Completion Time", None, None, None, None),
     ],
     Capability.oven_setpoint: [
-        Map(
-            Attribute.oven_setpoint,
-            "Temperature Setpoint",
-            None,
-            SensorDeviceClass.TEMPERATURE,
-            None,
-            None,
-        )
+        Map(Attribute.oven_setpoint, "Oven Set Point", None, None, None, None)
     ],
     Capability.power_consumption_report: [],
     Capability.power_meter: [
@@ -551,37 +534,9 @@ CAPABILITY_TO_SENSORS = {
             None,
         ),
     ],
-    "custom.cooktopOperatingState": [
-        Map("cooktopOperatingState", "Cooktop Operating State", None, None, None, None)
-    ],
-    "remoteControlStatus": [
-        Map("remoteControlEnabled", "Remote Control", None, None, None, None)
-    ],
-    "samsungce.doorState": [Map("doorState", "Door State", None, None, None, None)],
-    "samsungce.kidsLock": [Map("lockState", "Kids Lock State", None, None, None, None)],
-    "samsungce.meatProbe": [
-        Map(
-            "temperatureSetpoint",
-            "Meat Probe Setpoint",
-            None,
-            SensorDeviceClass.TEMPERATURE,
-            None,
-            None,
-        ),
-        Map("status", "Meat Probe Status", None, None, None, None),
-    ],
-    "samsungce.softwareUpdate": [
-        Map(
-            "newVersionAvailable",
-            "Firmware Update Available",
-            None,
-            None,
-            None,
-            EntityCategory.DIAGNOSTIC,
-        ),
-    ],
 }
 
+UNITS = {"C": TEMP_CELSIUS, "F": TEMP_FAHRENHEIT}
 
 THREE_AXIS_NAMES = ["X Coordinate", "Y Coordinate", "Z Coordinate"]
 POWER_CONSUMPTION_REPORT_NAMES = [
@@ -593,33 +548,33 @@ POWER_CONSUMPTION_REPORT_NAMES = [
 ]
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Add binary sensors for a config entry."""
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Add sensors for a config entry."""
     broker = hass.data[DOMAIN][DATA_BROKERS][config_entry.entry_id]
-    sensors = []
+    entities: list[SensorEntity] = []
     for device in broker.devices.values():
         for capability in broker.get_assigned(device.device_id, "sensor"):
             if capability == Capability.three_axis:
-                sensors.extend(
+                entities.extend(
                     [
                         SmartThingsThreeAxisSensor(device, index)
                         for index in range(len(THREE_AXIS_NAMES))
                     ]
                 )
             elif capability == Capability.power_consumption_report:
-                reports = POWER_CONSUMPTION_REPORT_NAMES
-                if device.status.attributes["energySavingSupport"].value is False:
-                    if "energySaved" in reports:
-                        reports.remove("energySaved")
-                sensors.extend(
+                entities.extend(
                     [
                         SmartThingsPowerConsumptionSensor(device, report_name)
-                        for report_name in reports
+                        for report_name in POWER_CONSUMPTION_REPORT_NAMES
                     ]
                 )
             else:
                 maps = CAPABILITY_TO_SENSORS[capability]
-                sensors.extend(
+                entities.extend(
                     [
                         SmartThingsSensor(
                             device,
@@ -633,42 +588,26 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                         for m in maps
                     ]
                 )
-        if (
-            device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
-            and device.type == "OCF"
-        ):
-            model = device.status.attributes[Attribute.mnmo].value.split("|")[0]
-            if model in ("TP2X_DA-KS-RANGE-0101X",):
-                sensors.extend(
+
+        if broker.any_assigned(device.device_id, "switch"):
+            for capability in (Capability.energy_meter, Capability.power_meter):
+                maps = CAPABILITY_TO_SENSORS[capability]
+                entities.extend(
                     [
-                        SamsungOvenWarmingCenter(device),
-                        SamsungOcfTemperatureSensor(
-                            device, "Temperature", "/temperature/current/cook/0"
-                        ),
-                        SamsungOcfTemperatureSensor(
+                        SmartThingsSensor(
                             device,
-                            "Meat Probe Temperature",
-                            "/temperature/current/prob/0",
-                        ),
-                    ]
-                )
-            elif model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
-                sensors.extend(
-                    [
-                        SamsungOcfTemperatureSensor(
-                            device,
-                            "Cooler Temperature",
-                            "/temperature/current/cooler/0",
-                        ),
-                        SamsungOcfTemperatureSensor(
-                            device,
-                            "Freezer Temperature",
-                            "/temperature/current/freezer/0",
-                        ),
+                            m.attribute,
+                            m.name,
+                            m.default_unit,
+                            m.device_class,
+                            m.state_class,
+                            m.entity_category,
+                        )
+                        for m in maps
                     ]
                 )
 
-    async_add_entities(sensors)
+    async_add_entities(entities)
 
 
 def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
@@ -689,7 +628,7 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
         default_unit: str,
         device_class: str,
         state_class: str | None,
-        entity_category: str | None,
+        entity_category: EntityCategory | None,
     ) -> None:
         """Init the class."""
         super().__init__(device)
@@ -702,7 +641,7 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
 
     @property
     def name(self) -> str:
-        """Return the name of the binary sensor."""
+        """Return the name of the sensor."""
         return f"{self._device.label} {self._name}"
 
     @property
@@ -711,20 +650,14 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
         return f"{self._device.device_id}.{self._attribute}"
 
     @property
-    def available(self) -> bool:
-        """check if sensor value is available"""
-        if self._device.status.attributes[self._attribute].value is None:
-            return False
-        return True
-
-    @property
     def native_value(self):
         """Return the state of the sensor."""
         value = self._device.status.attributes[self._attribute].value
+
         if self._device_class != SensorDeviceClass.TIMESTAMP:
             return value
 
-        return dt_util.parse_datetime(value)        
+        return dt_util.parse_datetime(value)
 
     @property
     def device_class(self):
@@ -735,7 +668,7 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
     def native_unit_of_measurement(self):
         """Return the unit this state is expressed in."""
         unit = self._device.status.attributes[self._attribute].unit
-        return UNIT_MAP.get(unit) if unit else self._default_unit
+        return UNITS.get(unit, unit) if unit else self._default_unit
 
 
 class SmartThingsThreeAxisSensor(SmartThingsEntity, SensorEntity):
@@ -748,7 +681,7 @@ class SmartThingsThreeAxisSensor(SmartThingsEntity, SensorEntity):
 
     @property
     def name(self) -> str:
-        """Return the name of the binary sensor."""
+        """Return the name of the sensor."""
         return f"{self._device.label} {THREE_AXIS_NAMES[self._index]}"
 
     @property
@@ -777,28 +710,19 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         """Init the class."""
         super().__init__(device)
         self.report_name = report_name
-        if self.report_name in ("energy", "energySaved"):
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        if self.report_name != "power":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        else:
-            self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def name(self) -> str:
-        """Return the name of the binary sensor."""
+        """Return the name of the sensor."""
         return f"{self._device.label} {self.report_name}"
 
     @property
     def unique_id(self) -> str:
         """Return a unique ID."""
         return f"{self._device.device_id}.{self.report_name}_meter"
-
-    @property
-    def available(self) -> bool:
-        """check if sensor value is available"""
-        value = self._device.status.attributes[Attribute.power_consumption].value
-        if value is None or value.get(self.report_name) is None:
-            return False
-        return True
 
     @property
     def native_value(self):
@@ -815,9 +739,7 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         """Return the device class of the sensor."""
         if self.report_name == "power":
             return SensorDeviceClass.POWER
-        if self.report_name in ("energy", "energySaved"):
-            return SensorDeviceClass.ENERGY
-        return None
+        return SensorDeviceClass.ENERGY
 
     @property
     def native_unit_of_measurement(self):
@@ -827,128 +749,17 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         return ENERGY_KILO_WATT_HOUR
 
     @property
-    def icon(self) -> str | None:
-        if self.report_name in ("deltaEnergy", "powerEnergy"):
-            return "mdi:current-ac"
+    def extra_state_attributes(self):
+        """Return specific state attributes."""
+        if self.report_name == "power":
+            attributes = [
+                "power_consumption_start",
+                "power_consumption_end",
+            ]
+            state_attributes = {}
+            for attribute in attributes:
+                value = getattr(self._device.status, attribute)
+                if value is not None:
+                    state_attributes[attribute] = value
+            return state_attributes
         return None
-
-
-class SamsungOvenWarmingCenter(SmartThingsEntity, SensorEntity):
-    """Define Samsung Cooktop Warming Center Sensor"""
-
-    execute_state = "Off"
-    init_bool = False
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute("mode/vs/0"))
-        asyncio.gather(*tasks)
-        self.init_bool = True
-
-    @property
-    def name(self) -> str:
-        """Return the name of the binary sensor."""
-        return f"{self._device.label} Warming Center"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}.warming_center"
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        if not self.init_bool:
-            self.startup()
-        output = json.dumps(self._device.status.attributes[Attribute.data].value)
-
-        if "WarmingCenter_High" in output:
-            self.execute_state = "High"
-        elif "WarmingCenter_Mid" in output:
-            self.execute_state = "Mid"
-        elif "WarmingCenter_Low" in output:
-            self.execute_state = "Low"
-        elif "WarmingCenter_Off" in output:
-            self.execute_state = "Off"
-        return self.execute_state
-
-    @property
-    def icon(self):
-        if self.execute_state in ("High", "Mid", "Low"):
-            return "mdi:checkbox-blank-circle"
-        return "mdi:checkbox-blank-circle-outline"
-
-
-class SamsungOcfTemperatureSensor(SmartThingsEntity, SensorEntity):
-    """Define Samsung OCF Temperature Sensor"""
-
-    execute_state = 0
-    unit_state = ""
-    init_bool = False
-
-    def __init__(
-        self,
-        device: DeviceEntity,
-        name: str,
-        page: str,
-    ) -> None:
-        """Init the class."""
-        super().__init__(device)
-        self._name = name
-        self._page = page
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute(self._page))
-        asyncio.gather(*tasks)
-
-    @property
-    def name(self) -> str:
-        """Return the name of the number."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        _unique_id = self._name.lower().replace(" ", "_")
-        return f"{self._device.device_id}.{_unique_id}"
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        if (
-            not self.init_bool
-            or self._device.status.attributes[Attribute.data].data["href"]
-            == "/temperatures/vs/0"
-        ):
-            self.startup()
-
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.init_bool = True
-            self.execute_state = int(
-                self._device.status.attributes[Attribute.data].value["payload"][
-                    "temperature"
-                ]
-            )
-        return self.execute_state
-
-    @property
-    def icon(self) -> str:
-        """Return Icon."""
-        return "mdi:thermometer"
-
-    @property
-    def device_class(self) -> str | None:
-        """Return Device Class."""
-        return SensorDeviceClass.TEMPERATURE
-
-    @property
-    def native_unit_of_measurement(self) -> str | None:
-        """Return unit of measurement"""
-        if self._device.status.attributes[Attribute.data].data["href"] == self._page:
-            self.unit_state = self._device.status.attributes[Attribute.data].value[
-                "payload"
-            ]["units"]
-        return UNIT_MAP.get(self.unit_state) if self.unit_state else None
