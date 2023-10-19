@@ -1,14 +1,11 @@
 {
   "domain": "smartthings",
   "name": "SmartThings",
-  "config_flow": true,
-  "documentation": "https://www.home-assistant.io/integrations/smartthings",
-  "requirements": ["pysmartapp==0.3.4", "pysmartthings==0.7.7"],
-  "dependencies": ["webhook"],
+  "version": "1.0",
   "after_dependencies": ["cloud"],
   "codeowners": ["@andrewsayre"],
-  "iot_class": "cloud_push",
-  "version": "1.0",
+  "config_flow": true,
+  "dependencies": ["webhook"],
   "dhcp": [
     {
       "hostname": "st*",
@@ -31,5 +28,8 @@
       "macaddress": "286D97*"
     }
   ],
-  "loggers": ["httpsig", "pysmartapp", "pysmartthings"]
+  "documentation": "https://www.home-assistant.io/integrations/smartthings",
+  "iot_class": "cloud_push",
+  "loggers": ["httpsig", "pysmartapp", "pysmartthings"],
+  "requirements": ["pysmartapp==0.3.5", "pysmartthings==0.7.8"]
 }

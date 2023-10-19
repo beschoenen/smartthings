@@ -4,11 +4,11 @@ import re
 
 from homeassistant.const import (
     Platform,
-    ELECTRIC_POTENTIAL_VOLT,
+    UnitOfTemperature,
+    UnitOfPower,
+    UnitOfTime,
+    UnitOfElectricPotential,
     PERCENTAGE,
-    POWER_WATT,
-    TEMP_CELSIUS,
-    TEMP_FAHRENHEIT,
 )
 
 DOMAIN = "smartthings"
@@ -60,13 +60,13 @@ IGNORED_CAPABILITIES = [
 ]
 
 UNIT_MAP = {
-    "C": TEMP_CELSIUS,
-    "F": TEMP_FAHRENHEIT,
-    "Hour": "Hour",
-    "minute": "Minute",
+    "C": UnitOfTemperature.CELSIUS,
+    "F": UnitOfTemperature.FAHRENHEIT,
+    "Hour": UnitOfTime.HOURS,
+    "minute": UnitOfTime.MINUTES,
     "%": PERCENTAGE,
-    "W": POWER_WATT,
-    "V": ELECTRIC_POTENTIAL_VOLT,
+    "W": UnitOfPower.WATT,
+    "V": UnitOfElectricPotential.VOLT,
 }
 
 TOKEN_REFRESH_INTERVAL = timedelta(days=14)
