@@ -166,6 +166,7 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         self._name = name
         self._icon = icon
         self._extra_state_attributes = extra_state_attributes
+        self._attr_options = self._determine_attr_options()
 
     @property
     def _attribute_is_map(self):
@@ -208,8 +209,7 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         """Return a unique ID."""
         return f"{self._device.device_id}.{self._attribute}"
 
-    @property
-    def options(self) -> list[str]:
+    def _determine_attr_options(self) -> list[str]:
         """return valid options"""
         if self._attribute_is_map:
             return [
@@ -222,10 +222,10 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
             for x in self._device.status.attributes[self._select_options_attr].value
         ]
 
-    # @property
-    # def current_option(self) -> str | None:
-    #     """return current option"""
-    #     return str(self._device.status.attributes[self._attribute].value)
+    @property
+    def current_option(self) -> str | None:
+        """return current option"""
+        return str(self._device.status.attributes[self._attribute].value)
 
     @property
     def unit_of_measurement(self) -> str | None:
