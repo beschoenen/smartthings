@@ -39,7 +39,7 @@ CAPABILITY_TO_SWITCH = {
     ],
     Capability.audio_mute: [
         Map(
-            "audioMute",
+            Attribute.mute,
             "mute",
             "unmute",
             None,
