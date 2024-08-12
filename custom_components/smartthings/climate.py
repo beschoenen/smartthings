@@ -575,7 +575,8 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
             supported_swings = [
                 FAN_OSCILLATION_TO_SWING.get(m, SWING_OFF) for m in supported_modes
             ]
-        if self._device.status.attributes[Attribute.mnmo].value.split("|")[0] == "ARTIK051_PRAC_20K":
+        if ("all" in supported_swings and
+            self._device.status.attributes[Attribute.mnmo].value.split("|")[0] == "ARTIK051_PRAC_20K"):
             supported_swings.remove("all")
         return supported_modes
 
