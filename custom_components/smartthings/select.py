@@ -77,7 +77,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
                 device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
                 and device.type == "OCF"
             ):
-                model = device.status.attributes[Attribute.mnmo].value.split("|")[0]
+                model = device.status.attributes["binaryId"].value
                 supported_ac_optional_modes = [
                     str(x)
                     for x in device.status.attributes["supportedAcOptionalMode"].value
@@ -169,9 +169,13 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
 
     @property
     def _attribute_is_map(self):
+        value = self._device.status.attributes[self._select_options_attr].value
+
         return (
             self._select_options_attr.endswith("Map")
-            and isinstance(self._device.status.attributes[self._select_options_attr].value, dict)
+            and isinstance(value, list)
+            and value.length > 0
+            and isinstance(value[0], dict)
         )
 
     async def async_select_option(self, option: str) -> None:

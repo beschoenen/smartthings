@@ -127,7 +127,7 @@ async def async_setup_entry(
             device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
             and device.type == "OCF"
         ):
-            model = device.status.attributes[Attribute.mnmo].value.split("|")[0]
+            model = device.status.attributes["binaryId"].value
             if (
                 Capability.execute
                 and broker.any_assigned(device.device_id, "climate")
