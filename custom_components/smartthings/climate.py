@@ -330,53 +330,23 @@ class SmartThingsThermostat(SmartThingsEntity, ClimateEntity):
 class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
     """Define a SmartThings Air Conditioner."""
 
+    _hvac_modes: list[HVACMode]
+
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE
     )
 
-    def __init__(self, device):
+    def __init__(self, device) -> None:
         """Init the class."""
         super().__init__(device)
         self.is_faulty_quiet = False
-        self._hvac_modes = None
+        self._hvac_modes = []
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
         await self._device.set_fan_mode(fan_mode, set_status=True)
         # State is set optimistically in the command above, therefore update
         # the entity state ahead of receiving the confirming push updates
-        self.async_write_ha_state()
-
-    async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Set new target fan mode."""
-        if self.is_faulty_quiet and preset_mode == "quiet":
-            result = await self._device.execute(
-                "mode/convenient/vs/0", {"x.com.samsung.da.modes": "Quiet"}
-            )
-        else:
-            result = await self._device.command(
-                "main",
-                "custom.airConditionerOptionalMode",
-                "setAcOptionalMode",
-                [preset_mode],
-            )
-        if result:
-            self._device.status.update_attribute_value("acOptionalMode", preset_mode)
-        self.async_write_ha_state()
-
-    async def async_set_swing_mode(self, swing_mode: str) -> None:
-        """Set new target swing mode."""
-        # await self._device.set_fan_oscillation_mode(swing_mode, set_status=True)
-        result = await self._device.command(
-            "main",
-            "fanOscillationMode",
-            "setFanOscillationMode",
-            [swing_mode],
-        )
-        # State is set optimistically in the command above, therefore update
-        # the entity state ahead of receiving the confirming push updates
-        if result:
-            self._device.status.update_attribute_value("fanOscillationMode", swing_mode)
         self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
@@ -455,15 +425,18 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
     @property
     def current_humidity(self):
         """Return the current humidity."""
+        if "relativeHumidityMeasurement" in self._device.status.disabled_capabilities:
+            return None
+
         return self._device.status.humidity
 
     @property
-    def current_temperature(self):
+    def current_temperature(self) -> float | None:
         """Return the current temperature."""
         return self._device.status.temperature
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return device specific state attributes.
 
         Include attributes from the Demand Response Load Control (drlc)
@@ -488,17 +461,85 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         return state_attributes
 
     @property
-    def fan_mode(self):
+    def fan_mode(self) -> str:
         """Return the fan setting."""
         return self._device.status.fan_mode
 
     @property
-    def fan_modes(self):
+    def fan_modes(self) -> list[str]:
         """Return the list of available fan modes."""
         return self._device.status.supported_ac_fan_modes
 
     @property
-    def swing_mode(self):
+    def hvac_mode(self) -> HVACMode | None:
+        """Return current operation ie. heat, cool, idle."""
+        if not self._device.status.switch:
+            return HVACMode.OFF
+        return AC_MODE_TO_STATE.get(self._device.status.air_conditioner_mode)
+
+    @property
+    def hvac_modes(self) -> list[HVACMode]:
+        """Return the list of available operation modes."""
+        return self._hvac_modes
+
+    @property
+    def supported_features(self):
+        """Return the supported features."""
+        supported_ac_optional_modes = [
+            str(x)
+            for x in self._device.status.attributes["supportedAcOptionalMode"].value
+        ]
+
+        flags = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.SWING_MODE
+
+        if len(supported_ac_optional_modes) > 1:
+            flags |= ClimateEntityFeature.PRESET_MODE
+
+        return flags
+
+    @property
+    def max_temp(self):
+        """Return the maximum temperature limit"""
+        return int(self._device.status.attributes["maximumSetpoint"].value)
+
+    @property
+    def min_temp(self):
+        """Return the minimum temperature limit"""
+        return int(self._device.status.attributes["minimumSetpoint"].value)
+
+    @property
+    def target_temperature(self) -> float:
+        """Return the temperature we try to reach."""
+        return self._device.status.cooling_setpoint
+
+    @property
+    def target_temperature_step(self):
+        """set the target temperature step size"""
+        return 1.0
+
+    @property
+    def temperature_unit(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MAP.get(self._device.status.attributes[Attribute.temperature].unit)
+
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Set new target swing mode."""
+        # await self._device.set_fan_oscillation_mode(swing_mode, set_status=True)
+        result = await self._device.command(
+            "main",
+            "fanOscillationMode",
+            "setFanOscillationMode",
+            [swing_mode],
+        )
+        # State is set optimistically in the command above, therefore update
+        # the entity state ahead of receiving the confirming push updates
+        if result:
+            self._device.status.update_attribute_value("fanOscillationMode", swing_mode)
+
+        self.async_schedule_update_ha_state(True)
+
+    @property
+    def swing_mode(self) -> str:
         """Return the swing setting."""
         return self._device.status.attributes["fanOscillationMode"].value
 
@@ -545,8 +586,8 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
 
         if self._device.status.air_conditioner_mode == "auto":
             if any(
-                    restrictedvalue in supported_ac_optional_modes
-                    for restrictedvalue in restricted_values
+                restrictedvalue in supported_ac_optional_modes
+                for restrictedvalue in restricted_values
             ):
                 reduced_supported_optional_modes = supported_ac_optional_modes
                 reduced_supported_optional_modes.remove("windFree")
@@ -554,54 +595,21 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         else:
             return supported_ac_optional_modes
 
-    @property
-    def hvac_mode(self) -> HVACMode | None:
-        """Return current operation ie. heat, cool, idle."""
-        if not self._device.status.switch:
-            return HVACMode.OFF
-        return AC_MODE_TO_STATE.get(self._device.status.air_conditioner_mode)
 
-    @property
-    def hvac_modes(self) -> list[HVACMode]:
-        """Return the list of available operation modes."""
-        return self._hvac_modes
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set new target fan mode."""
+        if self.is_faulty_quiet and preset_mode == "quiet":
+            result = await self._device.execute(
+                "mode/convenient/vs/0", {"x.com.samsung.da.modes": "Quiet"}
+            )
+        else:
+            result = await self._device.command(
+                "main",
+                "custom.airConditionerOptionalMode",
+                "setAcOptionalMode",
+                [preset_mode],
+            )
+        if result:
+            self._device.status.update_attribute_value("acOptionalMode", preset_mode)
 
-    @property
-    def supported_features(self):
-        """Return the supported features."""
-        supported_ac_optional_modes = [
-            str(x)
-            for x in self._device.status.attributes["supportedAcOptionalMode"].value
-        ]
-
-        flags = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.SWING_MODE
-
-        if len(supported_ac_optional_modes) > 1:
-            flags |= ClimateEntityFeature.PRESET_MODE
-
-        return flags
-
-    @property
-    def max_temp(self):
-        """Return the maximum temperature limit"""
-        return int(self._device.status.attributes["maximumSetpoint"].value)
-
-    @property
-    def min_temp(self):
-        """Return the minimum temperature limit"""
-        return int(self._device.status.attributes["minimumSetpoint"].value)
-
-    @property
-    def target_temperature(self):
-        """Return the temperature we try to reach."""
-        return self._device.status.cooling_setpoint
-
-    @property
-    def target_temperature_step(self):
-        """set the target temperature step size"""
-        return 1.0
-
-    @property
-    def temperature_unit(self):
-        """Return the unit of measurement."""
-        return UNIT_MAP.get(self._device.status.attributes[Attribute.temperature].unit)
+        self.async_write_ha_state()

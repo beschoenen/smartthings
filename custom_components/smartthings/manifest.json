@@ -3,7 +3,7 @@
   "name": "SmartThings",
   "version": "1.0",
   "after_dependencies": ["cloud"],
-  "codeowners": ["@andrewsayre"],
+  "codeowners": ["@beschoenen"],
   "config_flow": true,
   "dependencies": ["webhook"],
   "dhcp": [
