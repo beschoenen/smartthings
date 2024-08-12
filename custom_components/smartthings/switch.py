@@ -87,7 +87,7 @@ async def async_setup_entry(
     for device in broker.devices.values():
         for capability in broker.get_assigned(device.device_id, "switch"):
             maps = CAPABILITY_TO_SWITCH[capability]
-            if capability in ("custom.autoCleaningMode", "custom.spiMode"):
+            if capability in ("custom.autoCleaningMode", "custom.spiMode", Capability.audio_mute):
                 switches.extend(
                     [
                         SmartThingsCustomSwitch(
