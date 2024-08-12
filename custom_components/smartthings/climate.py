@@ -163,8 +163,6 @@ class SmartThingsThermostat(SmartThingsEntity, ClimateEntity):
         flags = (
             ClimateEntityFeature.TARGET_TEMPERATURE
             | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
-            | ClimateEntityFeature.TURN_OFF
-            | ClimateEntityFeature.TURN_ON
         )
         if self._device.get_capability(
             Capability.thermostat_fan_mode, Capability.thermostat
@@ -492,7 +490,11 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
             for x in self._device.status.attributes["supportedAcOptionalMode"].value
         ]
 
-        flags = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.SWING_MODE
+        flags = (ClimateEntityFeature.TARGET_TEMPERATURE
+                 | ClimateEntityFeature.FAN_MODE
+                 | ClimateEntityFeature.SWING_MODE
+                 | ClimateEntityFeature.TURN_OFF
+                 | ClimateEntityFeature.TURN_ON)
 
         if len(supported_ac_optional_modes) > 1:
             flags |= ClimateEntityFeature.PRESET_MODE
