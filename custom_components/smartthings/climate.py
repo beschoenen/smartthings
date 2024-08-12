@@ -360,7 +360,7 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         """Init the class."""
         super().__init__(device)
         self.is_faulty_quiet = False
-        self.model = self._device.status.attributes[Attribute.mnmo].value.split("|")[0]
+        self.model = self._device.status.attributes["binaryId"].value
         self._hvac_modes = []
         self._attr_preset_mode = None
         self._attr_preset_modes = self._determine_preset_modes()
@@ -375,15 +375,6 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
             | ClimateEntityFeature.TURN_OFF
             | ClimateEntityFeature.TURN_ON
         )
-
-        # TODO test, does preset mode still work?
-        # supported_ac_optional_modes = [
-        #     str(x)
-        #     for x in self._device.status.attributes["supportedAcOptionalMode"].value
-        # ]
-        #
-        # if len(supported_ac_optional_modes) > 1:
-        #     features |= ClimateEntityFeature.PRESET_MODE
 
         if self._device.get_capability(Capability.fan_oscillation_mode):
             features |= ClimateEntityFeature.SWING_MODE
@@ -590,19 +581,6 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
 
         self.async_schedule_update_ha_state(True)
 
-        # TODO Test if swing mode still works
-        # await self._device.set_fan_oscillation_mode(fan_oscillation_mode, set_status=True)
-        # result = await self._device.command(
-        #     "main",
-        #     "fanOscillationMode",
-        #     "setFanOscillationMode",
-        #     [fan_oscillation_mode],
-        # )
-        # # State is set optimistically in the command above, therefore update
-        # # the entity state ahead of receiving the confirming push updates
-        # if result:
-        #     self._device.status.update_attribute_value("fanOscillationMode", fan_oscillation_mode)
-
     @property
     def swing_mode(self) -> str:
         """Return the swing setting."""
@@ -617,6 +595,9 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         ].value
         if self._device.status.air_conditioner_mode == "auto":
             supported_modes = supported_modes.remove(WINDFREE)
+        if "quiet" not in supported_modes and self.model == "ARTIK051_PRAC_20K":
+            supported_modes.append("quiet")
+            self.is_faulty_quiet = True
 
         return supported_modes
 

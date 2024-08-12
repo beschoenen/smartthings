@@ -9,7 +9,7 @@ from homeassistant.components.select import SelectEntity
 
 import asyncio
 
-from pysmartthings import Attribute, Capability
+from pysmartthings import Attribute
 from pysmartthings.device import DeviceEntity
 
 from . import SmartThingsEntity
@@ -42,7 +42,7 @@ CAPABILITY_TO_SELECT = {
             "mdi:video-input-hdmi",
             [
                 "inputSource",
-            ]
+            ],
         )
     ]
 }
@@ -167,10 +167,26 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         self._icon = icon
         self._extra_state_attributes = extra_state_attributes
 
+    @property
+    def _attribute_is_map(self):
+        return (
+            self._select_options_attr.endswith("Map")
+            and isinstance(self._device.status.attributes[self._select_options_attr].value, dict)
+        )
+
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+
+        smartthings_option = option
+        # If the given attribute is a dict instead of a list we need to pluck the id to submit to SmartThings
+        if self._attribute_is_map:
+            for value in self._device.status.attributes[self._select_options_attr].value:
+                if value.name == smartthings_option:
+                    smartthings_option = value.id
+                    break
+
         result = await self._device.command(
-            "main", self._capability, self._select_command, [self._datatype(option)]
+            "main", self._capability, self._select_command, [self._datatype(smartthings_option)]
         )
         if result:
             self._device.status.update_attribute_value(self._attribute, option)
@@ -191,6 +207,12 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
     @property
     def options(self) -> list[str]:
         """return valid options"""
+        if self._attribute_is_map:
+            return [
+                str(x.name)
+                for x in self._device.status.attributes[self._select_options_attr].value
+            ]
+
         return [
             str(x)
             for x in self._device.status.attributes[self._select_options_attr].value
