@@ -1,4 +1,5 @@
 """Support for select through the SmartThings cloud API."""
+
 from __future__ import annotations
 
 from collections import namedtuple

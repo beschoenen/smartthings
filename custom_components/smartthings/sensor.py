@@ -1,8 +1,9 @@
 """Support for sensors through the SmartThings cloud API."""
+
 from __future__ import annotations
 
-from collections import namedtuple
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from pysmartthings import Attribute, Capability
 from pysmartthings.device import DeviceEntity
@@ -33,9 +34,17 @@ from homeassistant.util import dt as dt_util
 from . import SmartThingsEntity
 from .const import DATA_BROKERS, DOMAIN
 
-Map = namedtuple(
-    "Map", "attribute name default_unit device_class state_class entity_category"
-)
+
+class Map(NamedTuple):
+    """Tuple for mapping Smartthings capabilities to Home Assistant sensors."""
+
+    attribute: str
+    name: str
+    default_unit: str | None
+    device_class: SensorDeviceClass | None
+    state_class: SensorStateClass | None
+    entity_category: EntityCategory | None
+
 
 CAPABILITY_TO_SENSORS: dict[str, list[Map]] = {
     Capability.activity_lighting_mode: [
@@ -643,8 +652,8 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
         device: DeviceEntity,
         attribute: str,
         name: str,
-        default_unit: str,
-        device_class: SensorDeviceClass,
+        default_unit: str | None,
+        device_class: SensorDeviceClass | None,
         state_class: str | None,
         entity_category: EntityCategory | None,
     ) -> None:
@@ -661,9 +670,7 @@ class SmartThingsSensor(SmartThingsEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """check if sensor value is available"""
-        if self._device.status.attributes[self._attribute].value is None:
-            return False
-        return True
+        return self._device.status.attributes[self._attribute].value is not None
 
     @property
     def native_value(self):
@@ -715,7 +722,9 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
         self.report_name = report_name
         self._attr_name = f"{device.label} {report_name}"
         self._attr_unique_id = f"{device.device_id}.{report_name}_meter"
-        if self.report_name in ("power", "energy", "energySaved"):
+        # TODO test is is correct
+        # if self.report_name in ("power", "energy", "energySaved"):
+        if self.report_name == "power":
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_device_class = SensorDeviceClass.POWER
             self._attr_native_unit_of_measurement = UnitOfPower.WATT
@@ -728,9 +737,7 @@ class SmartThingsPowerConsumptionSensor(SmartThingsEntity, SensorEntity):
     def available(self) -> bool:
         """check if sensor value is available"""
         value = self._device.status.attributes[Attribute.power_consumption].value
-        if value is None or value.get(self.report_name) is None:
-            return False
-        return True
+        return value is not None and value.get(self.report_name) is not None
 
     @property
     def native_value(self):

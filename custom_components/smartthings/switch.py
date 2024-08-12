@@ -1,4 +1,5 @@
 """Support for switches through the SmartThings cloud API."""
+
 from __future__ import annotations
 
 from collections import namedtuple
@@ -203,14 +204,14 @@ class SmartThingsSwitch(SmartThingsEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        await getattr(self._device, self._off_command)(set_status=True)
+        await self._device.switch_off(set_status=True)
         # State is set optimistically in the command above, therefore update
         # the entity state ahead of receiving the confirming push updates
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        await getattr(self._device, self._on_command)(set_status=True)
+        await self._device.switch_on(set_status=True)
         # State is set optimistically in the command above, therefore update
         # the entity state ahead of receiving the confirming push updates
         self.async_write_ha_state()
@@ -363,9 +364,7 @@ class SamsungOcfSwitch(SmartThingsEntity, SwitchEntity):
 
     def startup(self):
         """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute(self._page))
-        asyncio.gather(*tasks)
+        asyncio.gather(self._device.execute(self._page))
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
