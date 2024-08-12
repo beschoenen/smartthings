@@ -36,6 +36,18 @@ CAPABILITY_TO_SWITCH = {
             None,
         ),
     ],
+    Capability.audio_mute: [
+        Map(
+            "audioMute",
+            "mute",
+            "unmute",
+            None,
+            None,
+            "Mute",
+            "mdi:volume-mute",
+            None,
+        )
+    ],
     "custom.spiMode": [
         Map(
             "spiMode",

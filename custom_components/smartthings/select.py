@@ -8,7 +8,7 @@ from homeassistant.components.select import SelectEntity
 
 import asyncio
 
-from pysmartthings import Attribute
+from pysmartthings import Attribute, Capability
 from pysmartthings.device import DeviceEntity
 
 from . import SmartThingsEntity
@@ -31,6 +31,19 @@ CAPABILITY_TO_SELECT = {
             None,
         )
     ],
+    "samsungvd.mediaInputSource": [
+        Map(
+            Attribute.input_source,
+            "supportedInputSourcesMap",
+            "setInputSource",
+            str,
+            "Input Source",
+            "mdi:video-input-hdmi",
+            [
+                "inputSource",
+            ]
+        )
+    ]
 }
 
 
