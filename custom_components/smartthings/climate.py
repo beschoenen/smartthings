@@ -572,11 +572,11 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set swing mode."""
-        # setting the fan must reset the preset mode
-        await self.async_set_preset_mode("off")
-
         fan_oscillation_mode = SWING_TO_FAN_OSCILLATION[swing_mode]
         await self._device.set_fan_oscillation_mode(fan_oscillation_mode)
+
+        # setting the fan must reset the preset mode (it deactivates the windFree function)
+        self._attr_preset_mode = None
 
         self.async_schedule_update_ha_state(True)
 
