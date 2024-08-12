@@ -163,6 +163,8 @@ class SmartThingsThermostat(SmartThingsEntity, ClimateEntity):
         flags = (
             ClimateEntityFeature.TARGET_TEMPERATURE
             | ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+            | ClimateEntityFeature.TURN_OFF
+            | ClimateEntityFeature.TURN_ON
         )
         if self._device.get_capability(
             Capability.thermostat_fan_mode, Capability.thermostat
