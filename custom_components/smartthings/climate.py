@@ -360,6 +360,7 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         """Init the class."""
         super().__init__(device)
         self.is_faulty_quiet = False
+        self.model = self._device.status.attributes[Attribute.mnmo].value.split("|")[0]
         self._hvac_modes = []
         self._attr_preset_mode = None
         self._attr_preset_modes = self._determine_preset_modes()
@@ -575,10 +576,9 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
             supported_swings = [
                 FAN_OSCILLATION_TO_SWING.get(m, SWING_OFF) for m in supported_modes
             ]
-        if ("all" in supported_swings and
-            self._device.status.attributes[Attribute.mnmo].value.split("|")[0] == "ARTIK051_PRAC_20K"):
-            supported_swings.remove("all")
-        return supported_modes
+            if self.model == "ARTIK051_PRAC_20K" and "all" in supported_swings:
+                supported_swings.remove("all")
+        return supported_swings
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set swing mode."""
@@ -622,6 +622,7 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set special modes (currently only windFree is supported)."""
+        # TODO is_faulty_quiet is never set
         if self.is_faulty_quiet and preset_mode == "quiet":
             result = await self._device.execute(
                 "mode/convenient/vs/0", {"x.com.samsung.da.modes": "Quiet"}
