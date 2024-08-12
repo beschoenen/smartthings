@@ -359,7 +359,6 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
     def __init__(self, device) -> None:
         """Init the class."""
         super().__init__(device)
-        self.is_faulty_quiet = False
         self.model = self._device.status.attributes["binaryId"].value
         self._hvac_modes = []
         self._attr_preset_mode = None
@@ -573,11 +572,11 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set swing mode."""
+        # setting the fan must reset the preset mode
+        await self.async_set_preset_mode("off")
+
         fan_oscillation_mode = SWING_TO_FAN_OSCILLATION[swing_mode]
         await self._device.set_fan_oscillation_mode(fan_oscillation_mode)
-
-        # setting the fan must reset the preset mode (it deactivates the windFree function)
-        self._attr_preset_mode = None
 
         self.async_schedule_update_ha_state(True)
 
@@ -595,26 +594,22 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         ].value
         if self._device.status.air_conditioner_mode == "auto":
             supported_modes = supported_modes.remove(WINDFREE)
-        if "quiet" not in supported_modes and self.model == "ARTIK051_PRAC_20K":
-            supported_modes.append("quiet")
-            self.is_faulty_quiet = True
 
         return supported_modes
 
+    @property
+    def preset_mode(self):
+        """Return the ac optional mode setting."""
+        return self._device.status.attributes["acOptionalMode"].value
+
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set special modes (currently only windFree is supported)."""
-        # TODO is_faulty_quiet is never set
-        if self.is_faulty_quiet and preset_mode == "quiet":
-            result = await self._device.execute(
-                "mode/convenient/vs/0", {"x.com.samsung.da.modes": "Quiet"}
-            )
-        else:
-            result = await self._device.command(
-                "main",
-                "custom.airConditionerOptionalMode",
-                "setAcOptionalMode",
-                [preset_mode],
-            )
+        result = await self._device.command(
+            "main",
+            "custom.airConditionerOptionalMode",
+            "setAcOptionalMode",
+            [preset_mode],
+        )
         if result:
             self._device.status.update_attribute_value("acOptionalMode", preset_mode)
 
