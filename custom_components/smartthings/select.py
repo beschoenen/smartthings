@@ -174,7 +174,7 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         return (
             self._select_options_attr.endswith("Map")
             and isinstance(value, list)
-            and value.length > 0
+            and len(value) > 0
             and isinstance(value[0], dict)
         )
 
