@@ -423,9 +423,9 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
         self._hvac_modes = list(modes)
 
     @property
-    def current_humidity(self):
+    def current_humidity(self) -> int | None:
         """Return the current humidity."""
-        if "relativeHumidityMeasurement" in self._device.status.disabled_capabilities:
+        if self._device.status.humidity == 0:
             return None
 
         return self._device.status.humidity
