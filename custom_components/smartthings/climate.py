@@ -576,8 +576,8 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
             supported_swings = [
                 FAN_OSCILLATION_TO_SWING.get(m, SWING_OFF) for m in supported_modes
             ]
-            if self.model == "ARTIK051_PRAC_20K" and "all" in supported_swings:
-                supported_swings.remove("all")
+            if self.model == "ARTIK051_PRAC_20K" and SWING_BOTH in supported_swings:
+                supported_swings.remove(SWING_BOTH)
         return supported_swings
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:

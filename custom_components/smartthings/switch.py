@@ -40,10 +40,10 @@ CAPABILITY_TO_SWITCH = {
     Capability.audio_mute: [
         Map(
             Attribute.mute,
-            "mute",
-            "unmute",
-            None,
-            None,
+            "setMute",
+            "setMute",
+            True,
+            False,
             "Mute",
             "mdi:volume-mute",
             None,
