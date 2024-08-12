@@ -222,10 +222,10 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
             for x in self._device.status.attributes[self._select_options_attr].value
         ]
 
-    @property
-    def current_option(self) -> str | None:
-        """return current option"""
-        return str(self._device.status.attributes[self._attribute].value)
+    # @property
+    # def current_option(self) -> str | None:
+    #     """return current option"""
+    #     return str(self._device.status.attributes[self._attribute].value)
 
     @property
     def unit_of_measurement(self) -> str | None:

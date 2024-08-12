@@ -313,8 +313,8 @@ class SmartThingsCustomSwitch(SmartThingsEntity, SwitchEntity):
     def is_on(self) -> bool:
         """Return true if switch is on."""
         if self._on_value is not None:
-            return getattr(self._device.status, self._attribute) == self._on_value
-        return getattr(self._device.status, self._attribute)
+            return self._device.status.attributes[self._attribute].value == self._on_value
+        return self._device.status.attributes[self._attribute].value
 
     @property
     def icon(self) -> str | None:
