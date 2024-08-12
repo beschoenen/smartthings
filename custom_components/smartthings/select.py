@@ -185,8 +185,8 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         # If the given attribute is a dict instead of a list we need to pluck the id to submit to SmartThings
         if self._attribute_is_map:
             for value in self._device.status.attributes[self._select_options_attr].value:
-                if value.name == smartthings_option:
-                    smartthings_option = value.id
+                if value["name"] == smartthings_option:
+                    smartthings_option = value["id"]
                     break
 
         result = await self._device.command(
@@ -213,7 +213,7 @@ class SmartThingsSelect(SmartThingsEntity, SelectEntity):
         """return valid options"""
         if self._attribute_is_map:
             return [
-                str(x.name)
+                str(x["name"])
                 for x in self._device.status.attributes[self._select_options_attr].value
             ]
 
