@@ -12,8 +12,8 @@ import asyncio
 from pysmartthings import Attribute
 from pysmartthings.device import DeviceEntity
 
-from . import SmartThingsEntity
 from .const import DATA_BROKERS, DOMAIN
+from .entity import SmartThingsEntity
 
 Map = namedtuple(
     "map",

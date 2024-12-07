@@ -9,8 +9,8 @@ from pysmartthings.device import DeviceEntity
 
 from homeassistant.components.button import ButtonEntity
 
-from . import SmartThingsEntity
 from .const import DATA_BROKERS, DOMAIN
+from .entity import SmartThingsEntity
 
 Map = namedtuple(
     "map",
