@@ -579,23 +579,19 @@ class SmartThingsAirConditioner(SmartThingsEntity, ClimateEntity):
     def preset_mode(self) -> str | None:
         """Return the preset mode."""
         if self.supports_capability(Capability.CUSTOM_AIR_CONDITIONER_OPTIONAL_MODE):
-            mode = self.get_attribute_value(
+            return self.get_attribute_value(
                 Capability.CUSTOM_AIR_CONDITIONER_OPTIONAL_MODE,
                 Attribute.AC_OPTIONAL_MODE,
             )
-            if mode == WINDFREE:
-                return WINDFREE
         return None
 
     def _determine_preset_modes(self) -> list[str] | None:
         """Return a list of available preset modes."""
         if self.supports_capability(Capability.CUSTOM_AIR_CONDITIONER_OPTIONAL_MODE):
-            supported_modes = self.get_attribute_value(
+            return self.get_attribute_value(
                 Capability.CUSTOM_AIR_CONDITIONER_OPTIONAL_MODE,
                 Attribute.SUPPORTED_AC_OPTIONAL_MODE,
             )
-            if supported_modes and WINDFREE in supported_modes:
-                return [WINDFREE]
         return None
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
