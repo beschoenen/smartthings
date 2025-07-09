@@ -1,123 +1,78 @@
-"""Support for buttons through the SmartThings cloud API."""
+"""Support for button entities through the SmartThings cloud API."""
 
 from __future__ import annotations
 
-from collections import namedtuple
-from collections.abc import Sequence
+from dataclasses import dataclass
 
-from pysmartthings.device import DeviceEntity
+from pysmartthings import Capability, Command, SmartThings
 
-from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DATA_BROKERS, DOMAIN
+from . import FullDevice, SmartThingsConfigEntry
+from .const import MAIN
 from .entity import SmartThingsEntity
 
-Map = namedtuple(
-    "map",
-    "button_command name icon device_class extra_state_attributes",
-)
 
-CAPABILITY_TO_BUTTON = {
-    "custom.dustFilter": [
-        Map(
-            "resetDustFilter",
-            "Reset Dust Filter",
-            "mdi:air-filter",
-            None,
-            [
-                "dustFilterUsageStep",
-                "dustFilterUsage",
-                "dustFilterLastResetDate",
-                "dustFilterStatus",
-                "dustFilterCapacity",
-                "dustFilterResetType",
-            ],
-        )
-    ],
+@dataclass(frozen=True, kw_only=True)
+class SmartThingsButtonDescription(ButtonEntityDescription):
+    """Class describing SmartThings button entities."""
+
+    key: Capability
+    command: Command
+
+
+CAPABILITIES_TO_BUTTONS: dict[Capability | str, SmartThingsButtonDescription] = {
+    Capability.OVEN_OPERATING_STATE: SmartThingsButtonDescription(
+        key=Capability.OVEN_OPERATING_STATE,
+        translation_key="stop",
+        command=Command.STOP,
+    ),
+    Capability.CUSTOM_WATER_FILTER: SmartThingsButtonDescription(
+        key=Capability.CUSTOM_WATER_FILTER,
+        translation_key="reset_water_filter",
+        command=Command.RESET_WATER_FILTER,
+    ),
 }
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Add switches for a config entry."""
-    broker = hass.data[DOMAIN][DATA_BROKERS][config_entry.entry_id]
-    buttons = []
-    for device in broker.devices.values():
-        for capability in broker.get_assigned(device.device_id, "button"):
-            maps = CAPABILITY_TO_BUTTON[capability]
-            buttons.extend(
-                [
-                    SmartThingsButton(
-                        device,
-                        capability,
-                        m.button_command,
-                        m.name,
-                        m.icon,
-                        m.device_class,
-                        m.extra_state_attributes,
-                    )
-                    for m in maps
-                ]
-            )
-
-    async_add_entities(buttons)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SmartThingsConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Add button entities for a config entry."""
+    entry_data = entry.runtime_data
+    async_add_entities(
+        SmartThingsButtonEntity(
+            entry_data.client, device, CAPABILITIES_TO_BUTTONS[capability]
+        )
+        for device in entry_data.devices.values()
+        for capability in device.status[MAIN]
+        if capability in CAPABILITIES_TO_BUTTONS
+    )
 
 
-def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
-    """Return all capabilities supported if minimum required are present."""
-    # Must be able to be turned on.
-    return [
-        capability for capability in CAPABILITY_TO_BUTTON if capability in capabilities
-    ]
-
-
-class SmartThingsButton(SmartThingsEntity, ButtonEntity):
+class SmartThingsButtonEntity(SmartThingsEntity, ButtonEntity):
     """Define a SmartThings button."""
+
+    entity_description: SmartThingsButtonDescription
 
     def __init__(
         self,
-        device: DeviceEntity,
-        capability: str,
-        button_command: str | None,
-        name: str,
-        icon: str | None,
-        device_class: str | None,
-        extra_state_attributes: str | None,
+        client: SmartThings,
+        device: FullDevice,
+        entity_description: SmartThingsButtonDescription,
     ) -> None:
-        """Init the class."""
-        super().__init__(device)
-        self._capability = capability
-        self._button_command = button_command
-        self._name = name
-        self._icon = icon
-        self._attr_device_class = device_class
-        self._extra_state_attributes = extra_state_attributes
+        """Initialize the instance."""
+        super().__init__(client, device, set())
+        self.entity_description = entity_description
+        self._attr_unique_id = f"{device.device.device_id}_{MAIN}_{entity_description.key}_{entity_description.command}"
 
     async def async_press(self) -> None:
-        """Handle the button press."""
-        await self._device.command("main", self._capability, self._button_command, [])
-
-    @property
-    def name(self) -> str:
-        """Return the name of the switch."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}.{self._name}"
-
-    @property
-    def icon(self) -> str | None:
-        return self._icon
-
-    @property
-    def extra_state_attributes(self):
-        """Return device specific state attributes."""
-        state_attributes = {}
-        if self._extra_state_attributes is not None:
-            attributes = self._extra_state_attributes
-            for attribute in attributes:
-                value = self._device.status.attributes[attribute].value
-                if value is not None:
-                    state_attributes[attribute] = value
-        return state_attributes
+        """Press the button."""
+        await self.execute_device_command(
+            self.entity_description.key,
+            self.entity_description.command,
+        )

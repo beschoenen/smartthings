@@ -1,3 +1,5 @@
 .idea
 venv
 .DS_Store
+hass
+.venv

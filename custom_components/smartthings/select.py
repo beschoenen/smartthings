@@ -1,376 +1,250 @@
-"""Support for select through the SmartThings cloud API."""
+"""Support for select entities through the SmartThings cloud API."""
 
 from __future__ import annotations
 
-from collections import namedtuple
-from collections.abc import Sequence
+from dataclasses import dataclass
 
-from homeassistant.components.select import SelectEntity
+from pysmartthings import Attribute, Capability, Command, SmartThings
 
-import asyncio
+from homeassistant.components.select import SelectEntity, SelectEntityDescription
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from pysmartthings import Attribute
-from pysmartthings.device import DeviceEntity
-
-from .const import DATA_BROKERS, DOMAIN
+from . import FullDevice, SmartThingsConfigEntry
+from .const import MAIN
 from .entity import SmartThingsEntity
 
-Map = namedtuple(
-    "map",
-    "attribute select_options_attr select_command datatype name icon extra_state_attributes",
-)
+LAMP_TO_HA = {
+    "extraHigh": "extra_high",
+}
 
-CAPABILITY_TO_SELECT = {
-    "samsungce.dustFilterAlarm": [
-        Map(
-            "alarmThreshold",
-            "supportedAlarmThresholds",
-            "setAlarmThreshold",
-            int,
-            "Filter Alarm Threshold",
-            None,
-            None,
-        )
-    ],
-    "samsungvd.mediaInputSource": [
-        Map(
-            Attribute.input_source,
-            "supportedInputSourcesMap",
-            "setInputSource",
-            str,
-            "Input Source",
-            "mdi:video-input-hdmi",
-            [
-                "inputSource",
-            ],
-        )
-    ]
+WASHER_SOIL_LEVEL_TO_HA = {
+    "none": "none",
+    "heavy": "heavy",
+    "normal": "normal",
+    "light": "light",
+    "extraLight": "extra_light",
+    "extraHeavy": "extra_heavy",
+    "up": "up",
+    "down": "down",
+}
+
+WASHER_SPIN_LEVEL_TO_HA = {
+    "none": "none",
+    "rinseHold": "rinse_hold",
+    "noSpin": "no_spin",
+    "low": "low",
+    "extraLow": "extra_low",
+    "delicate": "delicate",
+    "medium": "medium",
+    "high": "high",
+    "extraHigh": "extra_high",
+    "200": "200",
+    "400": "400",
+    "600": "600",
+    "800": "800",
+    "1000": "1000",
+    "1200": "1200",
+    "1400": "1400",
+    "1600": "1600",
 }
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Add select for a config entries."""
-    broker = hass.data[DOMAIN][DATA_BROKERS][config_entry.entry_id]
-    selects = []
-    for device in broker.devices.values():
-        for capability in broker.get_assigned(device.device_id, "select"):
-            maps = CAPABILITY_TO_SELECT[capability]
-            selects.extend(
-                [
-                    SmartThingsSelect(
-                        device,
-                        capability,
-                        m.attribute,
-                        m.select_options_attr,
-                        m.select_command,
-                        m.datatype,
-                        m.name,
-                        m.icon,
-                        m.extra_state_attributes,
-                    )
-                    for m in maps
-                ]
+@dataclass(frozen=True, kw_only=True)
+class SmartThingsSelectDescription(SelectEntityDescription):
+    """Class describing SmartThings select entities."""
+
+    key: Capability
+    requires_remote_control_status: bool = False
+    options_attribute: Attribute
+    status_attribute: Attribute
+    command: Command
+    options_map: dict[str, str] | None = None
+    default_options: list[str] | None = None
+    extra_components: list[str] | None = None
+    capability_ignore_list: list[Capability] | None = None
+
+
+CAPABILITIES_TO_SELECT: dict[Capability | str, SmartThingsSelectDescription] = {
+    Capability.DISHWASHER_OPERATING_STATE: SmartThingsSelectDescription(
+        key=Capability.DISHWASHER_OPERATING_STATE,
+        name=None,
+        translation_key="operating_state",
+        requires_remote_control_status=True,
+        options_attribute=Attribute.SUPPORTED_MACHINE_STATES,
+        status_attribute=Attribute.MACHINE_STATE,
+        command=Command.SET_MACHINE_STATE,
+    ),
+    Capability.DRYER_OPERATING_STATE: SmartThingsSelectDescription(
+        key=Capability.DRYER_OPERATING_STATE,
+        name=None,
+        translation_key="operating_state",
+        requires_remote_control_status=True,
+        options_attribute=Attribute.SUPPORTED_MACHINE_STATES,
+        status_attribute=Attribute.MACHINE_STATE,
+        command=Command.SET_MACHINE_STATE,
+        default_options=["run", "pause", "stop"],
+    ),
+    Capability.WASHER_OPERATING_STATE: SmartThingsSelectDescription(
+        key=Capability.WASHER_OPERATING_STATE,
+        name=None,
+        translation_key="operating_state",
+        requires_remote_control_status=True,
+        options_attribute=Attribute.SUPPORTED_MACHINE_STATES,
+        status_attribute=Attribute.MACHINE_STATE,
+        command=Command.SET_MACHINE_STATE,
+        default_options=["run", "pause", "stop"],
+    ),
+    Capability.SAMSUNG_CE_AUTO_DISPENSE_DETERGENT: SmartThingsSelectDescription(
+        key=Capability.SAMSUNG_CE_AUTO_DISPENSE_DETERGENT,
+        translation_key="detergent_amount",
+        options_attribute=Attribute.SUPPORTED_AMOUNT,
+        status_attribute=Attribute.AMOUNT,
+        command=Command.SET_AMOUNT,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    Capability.SAMSUNG_CE_FLEXIBLE_AUTO_DISPENSE_DETERGENT: SmartThingsSelectDescription(
+        key=Capability.SAMSUNG_CE_FLEXIBLE_AUTO_DISPENSE_DETERGENT,
+        translation_key="flexible_detergent_amount",
+        options_attribute=Attribute.SUPPORTED_AMOUNT,
+        status_attribute=Attribute.AMOUNT,
+        command=Command.SET_AMOUNT,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    Capability.SAMSUNG_CE_LAMP: SmartThingsSelectDescription(
+        key=Capability.SAMSUNG_CE_LAMP,
+        translation_key="lamp",
+        options_attribute=Attribute.SUPPORTED_BRIGHTNESS_LEVEL,
+        status_attribute=Attribute.BRIGHTNESS_LEVEL,
+        command=Command.SET_BRIGHTNESS_LEVEL,
+        options_map=LAMP_TO_HA,
+        entity_category=EntityCategory.CONFIG,
+        extra_components=["hood"],
+        capability_ignore_list=[Capability.SAMSUNG_CE_CONNECTION_STATE],
+    ),
+    Capability.CUSTOM_WASHER_SPIN_LEVEL: SmartThingsSelectDescription(
+        key=Capability.CUSTOM_WASHER_SPIN_LEVEL,
+        translation_key="spin_level",
+        options_attribute=Attribute.SUPPORTED_WASHER_SPIN_LEVEL,
+        status_attribute=Attribute.WASHER_SPIN_LEVEL,
+        command=Command.SET_WASHER_SPIN_LEVEL,
+        options_map=WASHER_SPIN_LEVEL_TO_HA,
+        entity_category=EntityCategory.CONFIG,
+    ),
+    Capability.CUSTOM_WASHER_SOIL_LEVEL: SmartThingsSelectDescription(
+        key=Capability.CUSTOM_WASHER_SOIL_LEVEL,
+        translation_key="soil_level",
+        options_attribute=Attribute.SUPPORTED_WASHER_SOIL_LEVEL,
+        status_attribute=Attribute.WASHER_SOIL_LEVEL,
+        command=Command.SET_WASHER_SOIL_LEVEL,
+        options_map=WASHER_SOIL_LEVEL_TO_HA,
+        entity_category=EntityCategory.CONFIG,
+    ),
+}
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: SmartThingsConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Add select entities for a config entry."""
+    entry_data = entry.runtime_data
+    async_add_entities(
+        SmartThingsSelectEntity(entry_data.client, device, description, component)
+        for capability, description in CAPABILITIES_TO_SELECT.items()
+        for device in entry_data.devices.values()
+        for component in device.status
+        if capability in device.status[component]
+        and (
+            component == MAIN
+            or (
+                description.extra_components is not None
+                and component in description.extra_components
             )
-
-        if broker.any_assigned(device.device_id, "climate"):
-            if (
-                device.status.attributes[Attribute.mnmn].value == "Samsung Electronics"
-                and device.type == "OCF"
-            ):
-                model = device.status.attributes["binaryId"].value
-                supported_ac_optional_modes = [
-                    str(x)
-                    for x in device.status.attributes["supportedAcOptionalMode"].value
-                ]
-                if (
-                    "motionDirect" in supported_ac_optional_modes
-                    and "motionIndirect" in supported_ac_optional_modes
-                ):
-                    selects.extend([SamsungACMotionSensorSaver(device)])
-                elif model in ("21K_REF_LCD_FHUB6.0", "ARTIK051_REF_17K"):
-                    selects.extend([SamsungOcfDeliModeSelect(device)])
-    async_add_entities(selects)
+        )
+        and (
+            description.capability_ignore_list is None
+            or any(
+                capability not in device.status[component]
+                for capability in description.capability_ignore_list
+            )
+        )
+    )
 
 
-def get_capabilities(capabilities: Sequence[str]) -> Sequence[str] | None:
-    """Return all capabilities supported if minimum required are present."""
-    # Must have a value that is selectable.
-    return [
-        capability for capability in CAPABILITY_TO_SELECT if capability in capabilities
-    ]
+class SmartThingsSelectEntity(SmartThingsEntity, SelectEntity):
+    """Define a SmartThings select."""
 
-
-MOTION_SENSOR_SAVER_MODES = [
-    "MotionMode_PowerSave",
-    "MotionMode_Default",
-    "MotionMode_Cooling",
-    "MotionMode_PowerSaveOff",
-    "MotionMode_DefaultOff",
-    "MotionMode_CoolingOff",
-]
-
-MOTION_SENSOR_SAVER_TO_STATE = {
-    "MotionMode_PowerSave": "Eco (Keeping Cool)",
-    "MotionMode_Default": "Normal (Keeping Cool)",
-    "MotionMode_Cooling": "Comfort (Keeping Cool)",
-    "MotionMode_PowerSaveOff": "Eco (Off)",
-    "MotionMode_DefaultOff": "Normal (Off)",
-    "MotionMode_CoolingOff": "Comfort (Off)",
-}
-STATE_TO_MOTION_SENSOR_SAVER = {
-    "Eco (Keeping Cool)": "MotionMode_PowerSave",
-    "Normal (Keeping Cool)": "MotionMode_Default",
-    "Comfort (Keeping Cool)": "MotionMode_Cooling",
-    "Eco (Off)": "MotionMode_PowerSaveOff",
-    "Normal (Off)": "MotionMode_DefaultOff",
-    "Comfort (Off)": "MotionMode_CoolingOff",
-}
-
-DELI_OPTIONS_TO_STATE = {
-    "CV_FDR_WINE": "Wine",
-    "CV_FDR_DELI": "Deli",
-    "CV_FDR_BEVERAGE": "Beverage",
-    "CV_FDR_MEAT": "Meat",
-}
-
-STATE_TO_DELI_OPTIONS = {
-    "Wine": "CV_FDR_WINE",
-    "Deli": "CV_FDR_DELI",
-    "Beverage": "CV_FDR_BEVERAGE",
-    "Meat": "CV_FDR_MEAT",
-}
-
-
-class SmartThingsSelect(SmartThingsEntity, SelectEntity):
-    """Define a SmartThings Select"""
+    entity_description: SmartThingsSelectDescription
 
     def __init__(
         self,
-        device: DeviceEntity,
-        capability: str,
-        attribute: str,
-        select_options_attr: str,
-        select_command: str,
-        datatype,
-        name: str,
-        icon: str | None,
-        extra_state_attributes: str | None,
+        client: SmartThings,
+        device: FullDevice,
+        entity_description: SmartThingsSelectDescription,
+        component: str,
     ) -> None:
-        """Init the class."""
-        super().__init__(device)
-        self._capability = capability
-        self._attribute = attribute
-        self._select_options_attr = select_options_attr
-        self._select_command = select_command
-        self._datatype = datatype
-        self._name = name
-        self._icon = icon
-        self._extra_state_attributes = extra_state_attributes
-        self._attr_options = self._determine_attr_options()
-
-    @property
-    def _attribute_is_map(self):
-        value = self._device.status.attributes[self._select_options_attr].value
-
-        return (
-            self._select_options_attr.endswith("Map")
-            and isinstance(value, list)
-            and len(value) > 0
-            and isinstance(value[0], dict)
-        )
-
-    async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-
-        smartthings_option = option
-        # If the given attribute is a dict instead of a list we need to pluck the id to submit to SmartThings
-        if self._attribute_is_map:
-            for value in self._device.status.attributes[self._select_options_attr].value:
-                if value["name"] == smartthings_option:
-                    smartthings_option = value["id"]
-                    break
-
-        result = await self._device.command(
-            "main", self._capability, self._select_command, [self._datatype(smartthings_option)]
-        )
-        if result:
-            self._device.status.update_attribute_value(self._attribute, option)
-        # State is set optimistically in the command above, therefore update
-        # the entity state ahead of receiving the confirming push updates
-        self.async_write_ha_state()
-
-    @property
-    def name(self) -> str:
-        """Return the name of the switch."""
-        return f"{self._device.label} {self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}.{self._attribute}"
-
-    def _determine_attr_options(self) -> list[str]:
-        """return valid options"""
-        if self._attribute_is_map:
-            return [
-                str(x["name"])
-                for x in self._device.status.attributes[self._select_options_attr].value
-            ]
-
-        return [
-            str(x)
-            for x in self._device.status.attributes[self._select_options_attr].value
-        ]
-
-    @property
-    def current_option(self) -> str | None:
-        """return current option"""
-        return str(self._device.status.attributes[self._attribute].value)
-
-    @property
-    def unit_of_measurement(self) -> str | None:
-        """Return unit of measurement"""
-        return self._device.status.attributes[self._attribute].unit
-
-    @property
-    def icon(self) -> str | None:
-        return self._icon
-
-
-class SamsungACMotionSensorSaver(SmartThingsEntity, SelectEntity):
-    """Define Samsung AC Motion Sensor Saver"""
-
-    execute_state = str
-    init_bool = False
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute("/mode/vs/0"))
-        asyncio.gather(*tasks)
-
-    async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        result = await self._device.execute(
-            "/mode/vs/0",
-            {"x.com.samsung.da.options": [STATE_TO_MOTION_SENSOR_SAVER[option]]},
-        )
-        if result:
-            self._device.status.update_attribute_value(
-                "data",
-                {
-                    "payload": {
-                        "x.com.samsung.da.options": [
-                            STATE_TO_MOTION_SENSOR_SAVER[option]
-                        ]
-                    }
-                },
-            )
-            self.execute_state = option
-        # State is set optimistically in the command above, therefore update
-        # the entity state ahead of receiving the confirming push updates
-        self.async_write_ha_state()
-
-    @property
-    def name(self) -> str:
-        """Return the name of the select entity."""
-        return f"{self._device.label} Motion Sensor Saver"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}_motion_sensor_saver"
+        """Initialize the instance."""
+        capabilities = {entity_description.key}
+        if entity_description.requires_remote_control_status:
+            capabilities.add(Capability.REMOTE_CONTROL_STATUS)
+        super().__init__(client, device, capabilities, component=component)
+        self.entity_description = entity_description
+        self._attr_unique_id = f"{device.device.device_id}_{component}_{entity_description.key}_{entity_description.status_attribute}_{entity_description.status_attribute}"
 
     @property
     def options(self) -> list[str]:
-        """return valid options"""
-        modes = []
-        for mode in MOTION_SENSOR_SAVER_MODES:
-            if (state := MOTION_SENSOR_SAVER_TO_STATE.get(mode)) is not None:
-                modes.append(state)
-        return list(modes)
+        """Return the list of options."""
+        options: list[str] = (
+            self.get_attribute_value(
+                self.entity_description.key, self.entity_description.options_attribute
+            )
+            or self.entity_description.default_options
+            or []
+        )
+        if self.entity_description.options_map:
+            options = [
+                self.entity_description.options_map.get(option, option)
+                for option in options
+            ]
+        return options
 
     @property
     def current_option(self) -> str | None:
-        """return current option"""
-        if not self.init_bool:
-            self.startup()
-        if self._device.status.attributes[Attribute.data].data["href"] == "/mode/vs/0":
-            self.init_bool = True
-            output = self._device.status.attributes[Attribute.data].value["payload"][
-                "x.com.samsung.da.options"
-            ]
-            mode = [str(mode) for mode in MOTION_SENSOR_SAVER_MODES if mode in output]
-            if len(mode) > 0:
-                self.execute_state = MOTION_SENSOR_SAVER_TO_STATE[mode[0]]
-        return self.execute_state
-
-
-class SamsungOcfDeliModeSelect(SmartThingsEntity, SelectEntity):
-    """Define Samsung AC Motion Sensor Saver"""
-
-    execute_state = str
-    init_bool = False
-
-    def startup(self):
-        """Make sure that OCF page visits mode on startup"""
-        tasks = []
-        tasks.append(self._device.execute("/mode/vs/0"))
-        asyncio.gather(*tasks)
+        """Return the current option."""
+        option = self.get_attribute_value(
+            self.entity_description.key, self.entity_description.status_attribute
+        )
+        if self.entity_description.options_map:
+            option = self.entity_description.options_map.get(option)
+        return option
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected option."""
-        result = await self._device.execute(
-            "mode/vs/0",
-            {"x.com.samsung.da.modes": [STATE_TO_DELI_OPTIONS[option]]},
-        )
-        if result:
-            self._device.status.update_attribute_value(
-                "data",
-                {
-                    "payload": {
-                        "x.com.samsung.da.modes": [STATE_TO_DELI_OPTIONS[option]]
-                    }
-                },
+        """Select an option."""
+        if (
+            self.entity_description.requires_remote_control_status
+            and self.get_attribute_value(
+                Capability.REMOTE_CONTROL_STATUS, Attribute.REMOTE_CONTROL_ENABLED
             )
-            self.execute_state = option
-        # State is set optimistically in the command above, therefore update
-        # the entity state ahead of receiving the confirming push updates
-        self.async_write_ha_state()
-
-    @property
-    def name(self) -> str:
-        """Return the name of the select entity."""
-        return f"{self._device.label} FlexZone Mode"
-
-    @property
-    def unique_id(self) -> str:
-        """Return a unique ID."""
-        return f"{self._device.device_id}_flexzone_mode"
-
-    @property
-    def options(self) -> list[str]:
-        """return valid options"""
-        modes = []
-        if self._device.status.attributes[Attribute.data].data["href"] == "/mode/vs/0":
-            for mode in self._device.status.attributes[Attribute.data].value["payload"][
-                "x.com.samsung.da.supportedOptions"
-            ]:
-                if (state := DELI_OPTIONS_TO_STATE.get(mode)) is not None:
-                    modes.append(state)
-        return list(modes)
-
-    @property
-    def current_option(self) -> str | None:
-        """return current option"""
-        if not self.init_bool:
-            self.startup()
-        if self._device.status.attributes[Attribute.data].data["href"] == "/mode/vs/0":
-            self.init_bool = True
-            output = self._device.status.attributes[Attribute.data].value["payload"][
-                "x.com.samsung.da.modes"
-            ]
-            mode = [str(mode) for mode in self.options if mode in output]
-            if len(mode) > 0:
-                self.execute_state = DELI_OPTIONS_TO_STATE[mode[0]]
-        return self.execute_state
+            == "false"
+        ):
+            raise ServiceValidationError(
+                "Can only be updated when remote control is enabled"
+            )
+        if self.entity_description.options_map:
+            option = next(
+                (
+                    key
+                    for key, value in self.entity_description.options_map.items()
+                    if value == option
+                ),
+                option,
+            )
+        await self.execute_device_command(
+            self.entity_description.key,
+            self.entity_description.command,
+            option,
+        )
